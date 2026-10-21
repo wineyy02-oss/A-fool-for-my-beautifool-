@@ -1,0 +1,980 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Magical Blooming Flower</title>
+
+<style>
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #02030b;
+}
+
+canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+body {
+    background:
+        radial-gradient(
+            ellipse at 50% 75%,
+            #10153a 0%,
+            #080b20 35%,
+            #030510 70%,
+            #010208 100%
+        );
+}
+</style>
+</head>
+
+<body>
+
+<canvas id="canvas"></canvas>
+
+<script>
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+let W, H, DPR;
+let scale;
+let centerX;
+let groundY;
+
+const PI = Math.PI;
+const TAU = PI * 2;
+
+let stars = [];
+let dust = [];
+let flowerParticles = [];
+let leafParticles = [];
+let stemParticles = [];
+let orbitParticles = [];
+
+let startTime = performance.now();
+
+const TOTAL_DURATION = 26000;
+
+function random(min, max) {
+    return Math.random() * (max - min) + min;
+}
+
+function clamp(v, min = 0, max = 1) {
+    return Math.max(min, Math.min(max, v));
+}
+
+function smooth(t) {
+    t = clamp(t);
+    return t * t * (3 - 2 * t);
+}
+
+function easeOut(t) {
+    t = clamp(t);
+    return 1 - Math.pow(1 - t, 3);
+}
+
+function resize() {
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+    W = window.innerWidth;
+    H = window.innerHeight;
+
+    canvas.width = W * DPR;
+    canvas.height = H * DPR;
+
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+
+    scale = Math.min(W / 430, H / 760);
+    scale = Math.max(scale, 0.55);
+
+    centerX = W * 0.5;
+    groundY = H * 0.86;
+
+    createStars();
+    createDust();
+    createFlower();
+    createLeaves();
+    createStem();
+    createOrbits();
+}
+
+function glowDot(x, y, radius, color, alpha = 1) {
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = color;
+
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, TAU);
+    ctx.fill();
+
+    ctx.globalAlpha = 1;
+}
+
+function createStars() {
+    stars = [];
+
+    for (let i = 0; i < 230; i++) {
+        stars.push({
+            x: random(0, W),
+            y: random(0, H),
+            r: random(0.25, 1.1),
+            phase: random(0, TAU),
+            speed: random(0.3, 1.8),
+            alpha: random(0.1, 0.65)
+        });
+    }
+}
+
+function drawBackground(time) {
+    const gradient = ctx.createRadialGradient(
+        centerX,
+        H * 0.7,
+        10,
+        centerX,
+        H * 0.55,
+        Math.max(W, H) * 0.85
+    );
+
+    gradient.addColorStop(0, "#101437");
+    gradient.addColorStop(0.32, "#080c25");
+    gradient.addColorStop(0.7, "#030614");
+    gradient.addColorStop(1, "#010209");
+
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, W, H);
+
+    const glow = ctx.createRadialGradient(
+        centerX,
+        groundY - 230 * scale,
+        0,
+        centerX,
+        groundY - 230 * scale,
+        330 * scale
+    );
+
+    glow.addColorStop(0, "rgba(55,35,125,0.14)");
+    glow.addColorStop(0.5, "rgba(35,30,100,0.07)");
+    glow.addColorStop(1, "rgba(0,0,0,0)");
+
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, 0, W, H);
+
+    for (const star of stars) {
+        const twinkle =
+            0.55 +
+            0.45 * Math.sin(time * star.speed + star.phase);
+
+        glowDot(
+            star.x,
+            star.y,
+            star.r,
+            "#a9b8ff",
+            star.alpha * twinkle
+        );
+    }
+}
+
+function createDust() {
+    dust = [];
+
+    for (let i = 0; i < 170; i++) {
+        dust.push({
+            x: random(0, W),
+            y: random(0, H),
+            r: random(0.3, 1.3),
+            speed: random(0.15, 0.7),
+            drift: random(-0.3, 0.3),
+            phase: random(0, TAU),
+            alpha: random(0.08, 0.45),
+            color: Math.random() > 0.5
+                ? "#a69aff"
+                : "#718dff"
+        });
+    }
+}
+
+function drawDust(time) {
+    ctx.save();
+
+    for (const p of dust) {
+        let y = (
+            p.y - time * p.speed * 13
+        ) % H;
+
+        if (y < 0) y += H;
+
+        const x =
+            p.x +
+            Math.sin(time * 0.35 + p.phase) * 12 +
+            p.drift * time * 4;
+
+        const alpha =
+            p.alpha *
+            (0.65 + 0.35 * Math.sin(time + p.phase));
+
+        glowDot(x, y, p.r, p.color, alpha);
+    }
+
+    ctx.restore();
+}
+
+// STEM
+
+function stemPoint(t) {
+    const height = 310 * scale;
+
+    return {
+        x:
+            centerX +
+            Math.sin(t * PI) * 8 * scale,
+        y:
+            groundY -
+            t * height
+    };
+}
+
+function createStem() {
+    stemParticles = [];
+
+    for (let i = 0; i < 3500; i++) {
+        const t = Math.random();
+        const p = stemPoint(t);
+
+        stemParticles.push({
+            x: p.x + random(-2.6, 2.6) * scale,
+            y: p.y,
+            t,
+            r: random(0.35, 1.15) * scale,
+            alpha: random(0.4, 1),
+            color: Math.random() > 0.35
+                ? "#8cffad"
+                : "#47d9a3"
+        });
+    }
+}
+
+function drawStem(progress, time) {
+    const growth = smooth(progress);
+
+    ctx.save();
+
+    ctx.shadowBlur = 9 * scale;
+    ctx.shadowColor = "#42ffb1";
+
+    for (const p of stemParticles) {
+        if (p.t > growth) continue;
+
+        const sway =
+            Math.sin(time * 0.8 + p.t * 3) *
+            1.3 * scale *
+            p.t;
+
+        glowDot(
+            p.x + sway,
+            p.y,
+            p.r,
+            p.color,
+            p.alpha
+        );
+    }
+
+    ctx.restore();
+}
+
+// LEAVES
+
+function leafShape(t, side, level) {
+    const baseT = level === 0 ? 0.21 : 0.48;
+    const base = stemPoint(baseT);
+
+    const length = (level === 0 ? 90 : 70) * scale;
+    const width = (level === 0 ? 27 : 22) * scale;
+
+    const x =
+        base.x +
+        side * length * t;
+
+    const y =
+        base.y -
+        Math.sin(t * PI) * width * 0.75 -
+        t * 20 * scale;
+
+    return { x, y };
+}
+
+function createLeaves() {
+    leafParticles = [];
+
+    for (let level = 0; level < 2; level++) {
+        for (const side of [-1, 1]) {
+            for (let i = 0; i < 2400; i++) {
+                const t = Math.random();
+                const width =
+                    Math.sin(t * PI) *
+                    (level === 0 ? 18 : 15) *
+                    scale;
+
+                const p = leafShape(t, side, level);
+
+                leafParticles.push({
+                    x: p.x,
+                    y: p.y + random(-width, width),
+                    t,
+                    side,
+                    level,
+                    r: random(0.35, 1.05) * scale,
+                    alpha: random(0.35, 0.95),
+                    color: Math.random() > 0.45
+                        ? "#91ffba"
+                        : "#49dca2"
+                });
+            }
+        }
+    }
+}
+
+function drawLeaves(progress, time) {
+    ctx.save();
+
+    ctx.shadowBlur = 6 * scale;
+    ctx.shadowColor = "#53ffb5";
+
+    for (const p of leafParticles) {
+        const start = p.level === 0 ? 0.16 : 0.46;
+        const local = clamp((progress - start) / 0.25);
+
+        if (p.t > smooth(local)) continue;
+
+        const sway =
+            Math.sin(time * 0.75 + p.t * 3) *
+            1.5 * scale;
+
+        glowDot(
+            p.x + sway,
+            p.y,
+            p.r,
+            p.color,
+            p.alpha * local
+        );
+    }
+
+    ctx.restore();
+}
+
+// FLOWER PETALS
+
+const petals = [
+    {
+        angle: -1.2,
+        length: 113,
+        width: 39,
+        depth: 0,
+        delay: 0.12
+    },
+    {
+        angle: 1.2,
+        length: 113,
+        width: 39,
+        depth: 0,
+        delay: 0.16
+    },
+    {
+        angle: -0.72,
+        length: 135,
+        width: 47,
+        depth: 1,
+        delay: 0.23
+    },
+    {
+        angle: 0.72,
+        length: 135,
+        width: 47,
+        depth: 1,
+        delay: 0.27
+    },
+    {
+        angle: -0.25,
+        length: 145,
+        width: 43,
+        depth: 2,
+        delay: 0.34
+    },
+    {
+        angle: 0.25,
+        length: 145,
+        width: 43,
+        depth: 2,
+        delay: 0.38
+    }
+];
+
+function petalPosition(petal, u, v, bloom) {
+    const flowerBase = stemPoint(1);
+
+    const closedAngle = petal.angle * 0.10;
+    const openAngle = petal.angle;
+
+    const angle =
+        closedAngle +
+        (openAngle - closedAngle) *
+        easeOut(bloom);
+
+    const length = petal.length * scale;
+
+    const spread =
+        (0.08 + 0.92 * easeOut(bloom));
+
+    const width =
+        petal.width *
+        scale *
+        spread *
+        Math.pow(Math.sin(u * PI), 0.8);
+
+    const distance =
+        u * length *
+        (0.55 + 0.45 * bloom);
+
+    const dx = Math.sin(angle);
+    const dy = -Math.cos(angle);
+
+    const nx = Math.cos(angle);
+    const ny = Math.sin(angle);
+
+    const curl =
+        Math.sin(u * PI) *
+        12 *
+        scale *
+        bloom;
+
+    const x =
+        flowerBase.x +
+        dx * distance +
+        nx * v * width +
+        dx * curl;
+
+    const y =
+        flowerBase.y +
+        dy * distance +
+        ny * v * width +
+        Math.pow(u, 2) * 12 * scale * bloom;
+
+    return { x, y };
+}
+
+function createFlower() {
+    flowerParticles = [];
+
+    for (let k = 0; k < petals.length; k++) {
+        const petal = petals[k];
+
+        for (let i = 0; i < 2700; i++) {
+            const u = Math.random();
+            const v = random(-1, 1);
+
+            const edge = Math.abs(v);
+
+            let color;
+
+            if (u < 0.16) {
+                color = Math.random() > 0.5
+                    ? "#fff6b0"
+                    : "#ffd48a";
+            } else if (edge > 0.83) {
+                color = Math.random() > 0.5
+                    ? "#ffc0f5"
+                    : "#ffe1ff";
+            } else if (u > 0.68) {
+                color = Math.random() > 0.5
+                    ? "#d96cdd"
+                    : "#a64cc9";
+            } else {
+                color = Math.random() > 0.5
+                    ? "#ff8de7"
+                    : "#e05ad1";
+            }
+
+            flowerParticles.push({
+                petal: k,
+                u,
+                v,
+                r: random(0.3, 1.15) * scale,
+                alpha: random(0.45, 1),
+                color,
+                phase: random(0, TAU)
+            });
+        }
+    }
+
+    flowerParticles.sort((a, b) => {
+        return petals[a.petal].depth -
+               petals[b.petal].depth;
+    });
+}
+
+function drawFlower(progress, time) {
+    if (progress <= 0) return;
+
+    const budProgress = clamp(progress / 0.3);
+
+    const bloom = smooth(
+        (progress - 0.28) / 0.72
+    );
+
+    ctx.save();
+
+    ctx.globalCompositeOperation = "lighter";
+
+    ctx.shadowBlur = 7 * scale;
+    ctx.shadowColor = "#ff70e6";
+
+    for (const p of flowerParticles) {
+        const petal = petals[p.petal];
+
+        const appear = clamp(
+            (progress - petal.delay) / 0.32
+        );
+
+        if (appear <= 0) continue;
+
+        const position = petalPosition(
+            petal,
+            p.u,
+            p.v,
+            bloom
+        );
+
+        const flowerBase = stemPoint(1);
+
+        const initialY =
+            flowerBase.y -
+            p.u * 85 * scale * budProgress;
+
+        const x =
+            flowerBase.x +
+            (position.x - flowerBase.x) *
+            appear;
+
+        const y =
+            initialY +
+            (position.y - initialY) *
+            appear;
+
+        const sparkle =
+            0.8 +
+            0.2 *
+            Math.sin(time * 2 + p.phase);
+
+        glowDot(
+            x,
+            y,
+            p.r,
+            p.color,
+            p.alpha * appear * sparkle
+        );
+    }
+
+    ctx.restore();
+
+    if (bloom > 0.1) {
+        const base = stemPoint(1);
+
+        const g = ctx.createRadialGradient(
+            base.x,
+            base.y - 5 * scale,
+            0,
+            base.x,
+            base.y - 5 * scale,
+            30 * scale
+        );
+
+        g.addColorStop(
+            0,
+            `rgba(255,245,170,${0.65 * bloom})`
+        );
+
+        g.addColorStop(
+            0.4,
+            `rgba(255,140,200,${0.3 * bloom})`
+        );
+
+        g.addColorStop(1, "rgba(255,100,200,0)");
+
+        ctx.fillStyle = g;
+        ctx.beginPath();
+
+        ctx.arc(
+            base.x,
+            base.y - 5 * scale,
+            30 * scale,
+            0,
+            TAU
+        );
+
+        ctx.fill();
+    }
+
+    drawStamens(bloom, time);
+}
+
+function drawStamens(bloom, time) {
+    if (bloom <= 0.3) return;
+
+    const base = stemPoint(1);
+    const opacity = smooth((bloom - 0.3) / 0.5);
+
+    ctx.save();
+
+    ctx.lineWidth = 1.2 * scale;
+    ctx.strokeStyle =
+        `rgba(255,179,110,${opacity * 0.8})`;
+
+    ctx.shadowBlur = 7 * scale;
+    ctx.shadowColor = "#ffac53";
+
+    for (let i = -2; i <= 2; i++) {
+        const endX =
+            base.x +
+            i * 19 * scale;
+
+        const endY =
+            base.y -
+            (55 + (2 - Math.abs(i)) * 9) * scale;
+
+        ctx.beginPath();
+        ctx.moveTo(base.x, base.y);
+        ctx.quadraticCurveTo(
+            base.x + i * 8 * scale,
+            base.y - 35 * scale,
+            endX,
+            endY
+        );
+        ctx.stroke();
+
+        glowDot(
+            endX,
+            endY,
+            2.1 * scale,
+            "#ffb64c",
+            opacity *
+            (0.8 + 0.2 * Math.sin(time * 3 + i))
+        );
+    }
+
+    ctx.restore();
+}
+
+// MAGICAL CIRCULAR ORBITS
+
+function createOrbits() {
+    orbitParticles = [];
+
+    for (let ring = 0; ring < 3; ring++) {
+        for (let i = 0; i < 850; i++) {
+            orbitParticles.push({
+                ring,
+                angle: random(0, TAU),
+                r: random(0.3, 0.85) * scale,
+                alpha: random(0.08, 0.75),
+                phase: random(0, TAU),
+                color: Math.random() > 0.5
+                    ? "#9c83ff"
+                    : "#c5a4ff"
+            });
+        }
+    }
+}
+
+function drawOrbits(time, progress) {
+    const appear = smooth(progress);
+
+    if (appear <= 0) return;
+
+    const cx = centerX;
+    const cy = groundY - 235 * scale;
+
+    ctx.save();
+
+    ctx.globalCompositeOperation = "lighter";
+
+    const rings = [
+        {
+            rx: 180,
+            ry: 230,
+            rotation: -0.28,
+            speed: 0.11
+        },
+        {
+            rx: 205,
+            ry: 145,
+            rotation: 0.58,
+            speed: -0.14
+        },
+        {
+            rx: 155,
+            ry: 210,
+            rotation: 0.9,
+            speed: 0.08
+        }
+    ];
+
+    rings.forEach((ring) => {
+        const rotation =
+            ring.rotation +
+            time * ring.speed;
+
+        ctx.save();
+
+        ctx.translate(cx, cy);
+        ctx.rotate(rotation);
+
+        ctx.beginPath();
+
+        ctx.ellipse(
+            0,
+            0,
+            ring.rx * scale,
+            ring.ry * scale,
+            0,
+            0,
+            TAU
+        );
+
+        ctx.strokeStyle =
+            `rgba(130,105,255,${0.11 * appear})`;
+
+        ctx.lineWidth = 0.65 * scale;
+
+        ctx.shadowBlur = 6 * scale;
+        ctx.shadowColor = "#8973ff";
+
+        ctx.stroke();
+
+        ctx.restore();
+    });
+
+    for (const p of orbitParticles) {
+        const ring = rings[p.ring];
+
+        const angle =
+            p.angle +
+            time * ring.speed * 2.5;
+
+        const x =
+            Math.cos(angle) *
+            ring.rx *
+            scale;
+
+        const y =
+            Math.sin(angle) *
+            ring.ry *
+            scale;
+
+        const rotation =
+            ring.rotation +
+            time * ring.speed;
+
+        const cos = Math.cos(rotation);
+        const sin = Math.sin(rotation);
+
+        const px =
+            cx + x * cos - y * sin;
+
+        const py =
+            cy + x * sin + y * cos;
+
+        const twinkle =
+            0.6 +
+            0.4 *
+            Math.sin(time * 2 + p.phase);
+
+        glowDot(
+            px,
+            py,
+            p.r,
+            p.color,
+            p.alpha * appear * twinkle * 0.65
+        );
+    }
+
+    ctx.restore();
+}
+
+// EXTRA SPARKLES
+
+const sparkles = [];
+
+for (let i = 0; i < 90; i++) {
+    sparkles.push({
+        angle: random(0, TAU),
+        distance: random(40, 200),
+        speed: random(0.15, 0.6),
+        phase: random(0, TAU),
+        radius: random(0.4, 1.5),
+        alpha: random(0.2, 0.9)
+    });
+}
+
+function drawSparkles(time, progress) {
+    const opacity = smooth(progress);
+
+    if (opacity <= 0) return;
+
+    const base = stemPoint(1);
+
+    ctx.save();
+
+    ctx.globalCompositeOperation = "lighter";
+
+    for (const s of sparkles) {
+        const angle =
+            s.angle +
+            time * s.speed * 0.2;
+
+        const distance =
+            s.distance *
+            scale;
+
+        const x =
+            base.x +
+            Math.cos(angle) * distance;
+
+        const y =
+            base.y -
+            30 * scale +
+            Math.sin(angle) * distance * 0.7;
+
+        const twinkle =
+            Math.pow(
+                Math.max(
+                    0,
+                    Math.sin(time * 2 + s.phase)
+                ),
+                3
+            );
+
+        glowDot(
+            x,
+            y,
+            s.radius * scale,
+            "#e5b8ff",
+            s.alpha * opacity * twinkle
+        );
+    }
+
+    ctx.restore();
+}
+
+// GROUND GLOW
+
+function drawGround(progress) {
+    const opacity = smooth(progress);
+
+    const gradient = ctx.createRadialGradient(
+        centerX,
+        groundY,
+        0,
+        centerX,
+        groundY,
+        130 * scale
+    );
+
+    gradient.addColorStop(
+        0,
+        `rgba(105,85,220,${0.18 * opacity})`
+    );
+
+    gradient.addColorStop(
+        0.5,
+        `rgba(65,55,160,${0.07 * opacity})`
+    );
+
+    gradient.addColorStop(1, "rgba(0,0,0,0)");
+
+    ctx.fillStyle = gradient;
+
+    ctx.beginPath();
+
+    ctx.ellipse(
+        centerX,
+        groundY,
+        130 * scale,
+        24 * scale,
+        0,
+        0,
+        TAU
+    );
+
+    ctx.fill();
+}
+
+// ANIMATION TIMELINE
+
+function animate(now) {
+    const elapsed =
+        (now - startTime) % TOTAL_DURATION;
+
+    const time = elapsed / 1000;
+
+    ctx.clearRect(0, 0, W, H);
+
+    drawBackground(time);
+    drawDust(time);
+
+    const stemProgress =
+        clamp((elapsed - 1000) / 4500);
+
+    const leafProgress =
+        clamp((elapsed - 2500) / 5500);
+
+    const budProgress =
+        clamp((elapsed - 7000) / 5000);
+
+    const flowerProgress =
+        clamp((elapsed - 9000) / 13000);
+
+    const orbitProgress =
+        clamp((elapsed - 3500) / 6500);
+
+    const sparkleProgress =
+        clamp((elapsed - 10000) / 9000);
+
+    drawOrbits(time, orbitProgress);
+
+    drawGround(stemProgress);
+
+    drawStem(stemProgress, time);
+
+    drawLeaves(leafProgress, time);
+
+    drawFlower(
+        Math.max(
+            budProgress * 0.28,
+            flowerProgress
+        ),
+        time
+    );
+
+    drawSparkles(time, sparkleProgress);
+
+    requestAnimationFrame(animate);
+}
+
+window.addEventListener("resize", resize);
+
+resize();
+
+requestAnimationFrame(animate);
+
+</script>
+
+</body>
+</html>
